@@ -118,7 +118,7 @@ def actions_clauses(symbol_dict, t, i, j, actions_dict):
     # Add for vaccinate
     add_v = [-symbol_v, symbol_dict['I'][t + 1][i][j]]
     # Del for vaccinate
-    del_v = [-symbol_v, ~symbol_dict['H'][t + 1][i][j]]
+    del_v = [-symbol_v, -symbol_dict['H'][t + 1][i][j]]
 
     symbol_q = symbol_dict['q'][t][i][j]
     # Precondition for quarantine
@@ -126,7 +126,7 @@ def actions_clauses(symbol_dict, t, i, j, actions_dict):
     # Add for quarantine
     add_q = [-symbol_q, symbol_dict['Q'][t + 1][i][j]]
     # Del for quarantine
-    del_q = [-symbol_q, ~symbol_dict['S'][t + 1][i][j]]
+    del_q = [-symbol_q, -symbol_dict['S'][t + 1][i][j]]
 
     actions_dict[symbol_v] = (
         symbol_dict['H'][t][i][j], symbol_dict['I'][t + 1][i][j], symbol_dict['H'][t + 1][i][j])
@@ -360,28 +360,28 @@ def number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, operation, all
         flags = []
         # print('start first leg of time {}'.format(t))
         # configurations where number of teams available is enough to operate on all legal locs
-        for i in range(allowed + 1): # todo
-            for locs_to_op in combinations(locs, i):
-                # flag_sign = str(t) + str(i) + str(serial)
-                temp_cnf = force(t, symbol_dict, serial, operation, set(locs_to_op), set(), locs)
-                cnf.extend(temp_cnf)
-                flags.append(serial)
-                serial += 1
+        # for i in range(allowed + 1): # todo
+        #     for locs_to_op in combinations(locs, i):
+        #         # flag_sign = str(t) + str(i) + str(serial)
+        #         temp_cnf = force(t, symbol_dict, serial, operation, set(locs_to_op), set(), locs)
+        #         cnf.extend(temp_cnf)
+        #         flags.append(serial)
+        #         serial += 1
 
         # print('start second leg of time {}'.format(t))
         # configurations where number of teams available is NOT enough to operate on all legal locs
-        for legal_num in range(allowed + 1, locs_num):
-            for total in combinations(locs, legal_num):
-                for to_op in combinations(total, allowed):
-                    not_to_op = set(total) - set(to_op)
-                    # flag_sign = str(t) + str(i) + str(serial)
-                    temp_cnf = force(t, symbol_dict, serial, operation,
-                                      set(to_op), not_to_op, locs)
-                    cnf.extend(temp_cnf)
-                    flags.append(serial)
-                    serial += 1
+        # for legal_num in range(allowed + 1, locs_num):
+        #     for total in combinations(locs, legal_num):
+        #         for to_op in combinations(total, allowed):
+        #             not_to_op = set(total) - set(to_op)
+        #             # flag_sign = str(t) + str(i) + str(serial)
+        #             temp_cnf = force(t, symbol_dict, serial, operation,
+        #                               set(to_op), not_to_op, locs)
+        #             cnf.extend(temp_cnf)
+        #             flags.append(serial)
+        #             serial += 1
 
-        cnf.extend(force_only_one(flags))
+        # cnf.extend(force_only_one(flags))
 
     return cnf
 
@@ -450,42 +450,42 @@ def solve_problem(input):
     KB, count_H_S_dict, possible_actions_tiles, action_effects_dict = create_KB(observations, symbol_dict, b, n_rows,
                                                                                 n_cols)
     KB.extend(spread_healing_clauses(n_rows, n_cols, b, symbol_dict))
-    # KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'q', police, biggest_symbol))
-    # KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'v', medics, biggest_symbol))
+    KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'q', police, biggest_symbol))
+    KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'v', medics, biggest_symbol))
 
     # print(f'{time.time() - t1:.3f}')
 
     res = {}
     statuses = ['H', 'Q', 'U', 'S', 'I']
 
-    s = Solver(bootstrap_with=KB)
-    print(s.solve())
-    # g = Glucose3(bootstrap_with=KB.clauses)
+    # s = Solver(bootstrap_with=KB)
+    # print(s.solve())
+    g = Glucose3(bootstrap_with=KB.clauses)
     # print(g.propagate())
 
-    # for q in queries:
-    #     status = q[2]
-    #     t = q[1]
-    #     loc = q[0]
-    #     i = loc[0]
-    #     j = loc[1]
-    #     q_symbol = symbol_dict[status][t][i][j]
-    #     q_cnf = KB
-    #     q_cnf.append([q_symbol])
-    #     g = Glucose3(bootstrap_with=q_cnf.clauses)
-    #     if not g.propagate()[0]:
-    #         res[tuple(q)] = 'F'
-    #     else:
-    #         for s in statuses:
-    #             if s != status:
-    #                 q_cnf = KB
-    #                 q_cnf.append([-symbol_dict[s][t][i][j]])
-    #                 g = Glucose3(bootstrap_with=q_cnf.clauses)
-    #                 if g.propagate()[0]:
-    #                     res[tuple(q)] = '?'
-    #                     print(s)
-    #                     #break
-    #     if q not in res.keys():
-    #         res[tuple(q)] = 'T'
+    for q in queries:
+        status = q[2]
+        t = q[1]
+        loc = q[0]
+        i = loc[0]
+        j = loc[1]
+        q_symbol = symbol_dict[status][t][i][j]
+        q_cnf = KB
+        q_cnf.append([q_symbol])
+        g = Glucose3(bootstrap_with=q_cnf.clauses)
+        if not g.propagate()[0]:
+            res[tuple(q)] = 'F'
+        else:
+            for s in statuses:
+                if s != status:
+                    q_cnf = KB
+                    q_cnf.append([-symbol_dict[s][t][i][j]])
+                    g = Glucose3(bootstrap_with=q_cnf.clauses)
+                    if g.propagate()[0]:
+                        res[tuple(q)] = '?'
+                        # print(s)
+                        #break
+        if q not in res.keys():
+            res[tuple(q)] = 'T'
 
     return res
