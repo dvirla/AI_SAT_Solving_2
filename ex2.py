@@ -358,7 +358,7 @@ def number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, operation, all
     serial = biggest_symbol
     for t in range(b - 1):
         flags = []
-        print('start first leg of time {}'.format(t))
+        # print('start first leg of time {}'.format(t))
         # configurations where number of teams available is enough to operate on all legal locs
         for i in range(allowed + 1): # todo
             for locs_to_op in combinations(locs, i):
@@ -368,7 +368,7 @@ def number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, operation, all
                 flags.append(serial)
                 serial += 1
 
-        print('start second leg of time {}'.format(t))
+        # print('start second leg of time {}'.format(t))
         # configurations where number of teams available is NOT enough to operate on all legal locs
         for legal_num in range(allowed + 1, locs_num):
             for total in combinations(locs, legal_num):
@@ -450,10 +450,10 @@ def solve_problem(input):
     KB, count_H_S_dict, possible_actions_tiles, action_effects_dict = create_KB(observations, symbol_dict, b, n_rows,
                                                                                 n_cols)
     KB.extend(spread_healing_clauses(n_rows, n_cols, b, symbol_dict))
-    KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'q', police, biggest_symbol))
-    KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'v', medics, biggest_symbol))
+    # KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'q', police, biggest_symbol))
+    # KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'v', medics, biggest_symbol))
 
-    print(f'{time.time() - t1:.3f}')
+    # print(f'{time.time() - t1:.3f}')
 
     res = {}
     statuses = ['H', 'Q', 'U', 'S', 'I']
