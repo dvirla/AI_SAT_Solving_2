@@ -558,7 +558,7 @@ def solve_problem(input):
             for s in statuses:
                 if s != status:
                     q_cnf = KB
-                    q_cnf.append([-symbol_dict[s][t][i][j]])
+                    q_cnf.append([symbol_dict[s][t][i][j]])
                     g = Glucose3(bootstrap_with=q_cnf.clauses)
                     if g.propagate()[0]:
                         res[tuple(q)] = '?'
