@@ -30,17 +30,14 @@ def timeout_exec(func, args=(), kwargs={}, timeout_duration=10, default=None):
         return it.result
 
 
-def solve_problems(problems, expected_output):
-    for problem, expected in zip(problems, expected_output):
+def solve_problems(problems):
+    for problem in problems:
         timeout = 300
         t1 = time.time()
         result = timeout_exec(ex2.solve_problem, args=[problem], timeout_duration=timeout)
         t2 = time.time()
-        print(f'Your answer is {result}, achieved in {t2 - t1:.3f} seconds')
-        print('Expected output is: ' + str(expected))
-        if expected == result: print('Correct!')
-        else: print('Wrong!')
-        print('\n')
+        # print(f'Your answer is {result}, achieved in {t2 - t1:.3f} seconds')
+        print(result)
 
 
 def main():
@@ -82,34 +79,34 @@ def main():
 
         },
 
-        {
-            "police": 1,
-            "medics": 0,
-            "observations": [
-                (
-                    ('S', 'H', 'U'),
-                    ('H', 'H', 'H'),
-                    ('U', 'H', 'S'),
-                ),
-
-                (
-                    ('S', 'S', 'U'),
-                    ('S', 'H', 'S'),
-                    ('U', 'S', '?'),
-                ),
-
-                (
-                    ('?', 'S', 'U'),
-                    ('S', 'S', 'S'),
-                    ('U', 'S', 'Q'),
-                ),
-            ],
-
-            "queries": [
-                ((0, 0), 2, 'H')
-            ],
-
-        },
+        # {
+        #     "police": 1,
+        #     "medics": 0,
+        #     "observations": [
+        #         (
+        #             ('S', 'H', 'U'),
+        #             ('H', 'H', 'H'),
+        #             ('U', 'H', 'S'),
+        #         ),
+        #
+        #         (
+        #             ('S', 'S', 'U'),
+        #             ('S', 'H', 'S'),
+        #             ('U', 'S', '?'),
+        #         ),
+        #
+        #         (
+        #             ('?', 'S', 'U'),
+        #             ('S', 'S', 'S'),
+        #             ('U', 'S', 'Q'),
+        #         ),
+        #     ],
+        #
+        #     "queries": [
+        #         ((0, 0), 2, 'S')
+        #     ],
+        #
+        # },
 
         {
             "police": 0,
@@ -204,141 +201,8 @@ def main():
         },
 
     ]
-    # problems = [
-    #     {
-    #         "police": 0,
-    #         "medics": 0,
-    #         "observations": [
-    #             (
-    #                 ('H', '?'),
-    #                 ('H', 'H')
-    #             ),
-    #
-    #             (
-    #                 ('S', '?'),
-    #                 ('?', 'S')
-    #             ),
-    #         ],
-    #
-    #         "queries": [
-    #             [((0, 1), 0, "H"), ((1, 0), 1, "S")]
-    #         ]
-    #     },
-    #
-    #     {
-    #         "police": 1,
-    #         "medics": 0,
-    #         "observations": [
-    #             (
-    #                 ('H', 'S'),
-    #                 ('?', 'H')
-    #             ),
-    #
-    #             (
-    #                 ('S', '?'),
-    #                 ('?', 'S')
-    #             ),
-    #         ],
-    #
-    #         "queries": [
-    #             [((0, 1), 1, "H"), ((1, 0), 1, "S")]
-    #         ]
-    #
-    #     },
-    #
-    #     {
-    #         "police": 0,
-    #         "medics": 1,
-    #         "observations": [
-    #             (
-    #                 ('H', 'S'),
-    #                 ('H', 'H')
-    #             ),
-    #
-    #             (
-    #                 ('S', 'S'),
-    #                 ('?', 'S')
-    #             ),
-    #
-    #             (
-    #                 ('S', '?'),
-    #                 ('?', 'S')
-    #             ),
-    #
-    #             (
-    #                 ('S', '?'),
-    #                 ('?', 'S')
-    #             ),
-    #         ],
-    #
-    #         "queries": [
-    #             [((1, 0), 1, "H"), ((1, 0), 1, "Q"), ((1, 0), 1, "S"), ((1, 0), 1, "U"),
-    #              ((1, 0), 1, "I")]
-    #         ]
-    #
-    #     },
-    #
-    #     {
-    #         "police": 0,
-    #         "medics": 1,
-    #         "observations": [
-    #             (
-    #                 ('H', 'S'),
-    #                 ('H', 'H')
-    #             ),
-    #
-    #             (
-    #                 ('S', '?'),
-    #                 ('?', 'S')
-    #             ),
-    #
-    #             (
-    #                 ('S', '?'),
-    #                 ('?', 'S')
-    #             ),
-    #
-    #             (
-    #                 ('S', '?'),
-    #                 ('?', 'S')
-    #             ),
-    #         ],
-    #
-    #         "queries": [
-    #             [((0, 1), 2, "Q"), ((0, 1), 2, "H"), ((0, 1), 2, "S"),
-    #              ((0, 1), 2, "U"), ((0, 1), 2, "I")]
-    #         ]
-    #
-    #     }
-    # ]
 
-    expected_output = [
-        {
-            ((0, 1), 0, "H"): 'F',
-            ((1, 0), 1, "S"): 'F'
-        },
-
-        {
-            ((0, 1), 1, "H"): 'F',
-            ((1, 0), 1, "S"): '?'
-        },
-
-        {
-            ((1, 0), 1, "H"): 'F',
-            ((1, 0), 1, "Q"): 'F',
-            ((1, 0), 1, "S"): 'F',
-            ((1, 0), 1, "U"): 'F',
-            ((1, 0), 1, "I"): 'T'
-        },
-
-        {
-            ((0, 1), 2, "Q"): 'F',
-            ((0, 1), 2, "H"): 'F',
-            ((0, 1), 2, "S"): 'T',
-            ((0, 1), 2, "U"): 'F',
-            ((0, 1), 2, "I"): 'F'
-        }
-    ]
-    solve_problems(problems[1:], expected_output[1:5])
+    solve_problems(problems)
 
 
 if __name__ == '__main__':
