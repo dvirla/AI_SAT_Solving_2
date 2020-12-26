@@ -468,33 +468,58 @@ def positive_negative_frame_axioms_and_linearity(n_rows, n_cols, b, symbol_dict,
 #     return cnf, serial
 
 
-def spread_healing_clauses(n_rows, n_cols, b, symbol_dict):
+def s_iff_have_sick_neighbor(n_rows, n_cols, symbol_dict, t, s, neighbors):
+    sick_neighbors = []
+    flag_implies_sick_neighbor_clause = []
+    sick_neighbors_implies_flag_clause = []
+    for neighbor in neighbors:
+        if is_valid(neighbor, n_rows, n_cols):
+            sick_neighbors.append([symbol_dict['S'][t - 1][neighbor[0]][neighbor[1]],
+                                   -symbol_dict['q'][t - 1][neighbor[0]][neighbor[1]]])
+            sick_neighbors_implies_flag_clause.append([s, -symbol_dict['S'][t - 1][neighbor[0]][neighbor[1]],
+                                                       symbol_dict['q'][t - 1][neighbor[0]][neighbor[1]]])
+
+    for symbol_prod in itertools.product(*sick_neighbors):
+        flag_implies_sick_neighbor_clause.append([-s] + list(symbol_prod))
+
+    cnf = CNF()
+    cnf.extend(flag_implies_sick_neighbor_clause)
+    cnf.extend(sick_neighbors_implies_flag_clause)
+    return cnf
+
+
+def spread_healing_clauses(n_rows, n_cols, b, symbol_dict, biggest_cur_symbol):
     """
     Adding spread clauses to cnf (Sick coordinate implies that it was sick at t-1 or it got infected by one of its neighbors)
     :return:
     """
     backward_healing_cnf = CNF()
     backward_spread_cnf = CNF()
+    cur_symbol = biggest_cur_symbol + 1
     for t in range(b):
         for i in range(n_rows):
             for j in range(n_cols):
                 # Backward spread
-                not_sick_at_t = -symbol_dict['S'][t][i][j]
-                sick_t_minus_1 = [symbol_dict['S'][t - 1][i][j], -symbol_dict['q'][t - 1][i][j]]  # S and not q
-                sick_neighbors = []
                 neighbors = [(i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)]
-                for neighbor in neighbors:
-                    if is_valid(neighbor, n_rows, n_cols):
-                        sick_neighbors.append([symbol_dict['H'][t - 1][i][j], -symbol_dict['v'][t - 1][i][j],
-                                               symbol_dict['S'][t - 1][neighbor[0]][neighbor[1]],
-                                               -symbol_dict['q'][t - 1][neighbor[0]][
-                                                   neighbor[1]]])  # OR between neighbors if S and not q
+                if t > 0:
+                    not_sick_at_t = -symbol_dict['S'][t][i][j]
+                    sick_t_minus_1 = [symbol_dict['S'][t - 1][i][j], -symbol_dict['q'][t - 1][i][j]]  # S and not q
+                    sick_neighbors = []
+                    for neighbor in neighbors:
+                        if is_valid(neighbor, n_rows, n_cols):
+                            sick_neighbors.append([symbol_dict['H'][t - 1][i][j], -symbol_dict['v'][t - 1][i][j],
+                                                   symbol_dict['S'][t - 1][neighbor[0]][neighbor[1]],
+                                                   -symbol_dict['q'][t - 1][neighbor[0]][neighbor[1]]])  # OR between neighbors if S and not q
 
-                for symbol_prod in itertools.product(sick_t_minus_1, *sick_neighbors):
-                    backward_spread_cnf.append(list(symbol_prod) + [not_sick_at_t])
+                    for symbol_prod in itertools.product(sick_t_minus_1, *sick_neighbors):
+                        backward_spread_cnf.append(list(symbol_prod) + [not_sick_at_t])
 
                 # Backward healing
                 if t > 2:
+                    s = cur_symbol
+                    cur_symbol += 1
+                    s_iff_have_sick_neighbor_clause = s_iff_have_sick_neighbor(n_rows, n_cols, symbol_dict, t, s, neighbors)
+                    backward_healing_cnf.extend(s_iff_have_sick_neighbor_clause)
                     k = symbol_dict['H'][t][i][j]
                     a = symbol_dict['H'][t - 1][i][j]
                     e = symbol_dict['v'][t - 1][i][j]
@@ -504,17 +529,26 @@ def spread_healing_clauses(n_rows, n_cols, b, symbol_dict):
                     y = symbol_dict['q'][t - 1][i][j]
                     z = symbol_dict['Q'][t - 1][i][j]
                     w = symbol_dict['Q'][t - 2][i][j]
+
                     backward_healing_cnf.extend([[a, c, w, -k], [a, c, z, -k], [a, d, w, -k], [a, d, z, -k],
-                                                 [a, w, x, -k], [a, x, z, -k], [a, w, -k, -y], [a, z, -k, -y],
-                                                 [c, w, -e, -k], [c, z, -e, -k], [d, w, -e, -k], [d, z, -e, -k],
-                                                 [w, x, -e, -k], [x, z, -e, -k], [w, -e, -k, -y], [z, -e, -k, -y]])
+                                                 [a, w, x, -k], [a, x, z, -k], [a, w, -k, -y], [a, z, -k, -y], [c, w, -e, -k],
+                                                 [c, w, -k, -s], [c, z, -e, -k], [c, z, -k, -s], [d, w, -e, -k],
+                                                 [d, w, -k, -s], [d, z, -e, -k], [d, z, -k, -s], [w, x, -e, -k],
+                                                 [w, x, -k, -s], [x, z, -e, -k], [x, z, -k, -s], [w, -e, -k, -y],
+                                                 [w, -k, -s, -y], [z, -e, -k, -y], [z, -k, -s, -y]])
 
                 elif t > 0:
+                    s = cur_symbol
+                    cur_symbol += 1
+                    s_iff_have_sick_neighbor_clause = s_iff_have_sick_neighbor(n_rows, n_cols, symbol_dict, t, s,
+                                                                               neighbors)
+                    backward_healing_cnf.extend(s_iff_have_sick_neighbor_clause)
                     backward_healing_cnf.append([-symbol_dict['H'][t][i][j], symbol_dict['H'][t - 1][i][j]])
                     backward_healing_cnf.append([-symbol_dict['H'][t][i][j], -symbol_dict['v'][t - 1][i][j]])
+                    backward_healing_cnf.append([-symbol_dict['H'][t][i][j], -s])
 
     backward_healing_cnf.extend(backward_spread_cnf)
-    return backward_healing_cnf
+    return backward_healing_cnf, cur_symbol
 
 
 def solve_problem(input):
@@ -530,14 +564,15 @@ def solve_problem(input):
     symbol_dict, biggest_symbol = create_symbols(b, n_rows, n_cols)
     KB, count_H_S_dict, possible_actions_tiles, action_effects_dict = create_KB(observations, symbol_dict, b, n_rows,
                                                                                 n_cols)
-    KB.extend(spread_healing_clauses(n_rows, n_cols, b, symbol_dict))
+    temp_cnf, biggest_symbol = spread_healing_clauses(n_rows, n_cols, b, symbol_dict, biggest_symbol)
+    KB.extend(temp_cnf)
     KB.extend(positive_negative_frame_axioms_and_linearity(n_rows, n_cols, b, symbol_dict, action_effects_dict, medics, police,
                                                  count_H_S_dict, biggest_symbol, possible_actions_tiles))
 
     res = {}
     statuses = ['H', 'Q', 'U', 'S', 'I']
 
-    # s = Solver(bootstrap_with=KB)
+    s = Solver(bootstrap_with=KB)
     # print(s.solve())
     # g = Glucose3(bootstrap_with=KB.clauses)
     # print(g.propagate())
@@ -549,20 +584,20 @@ def solve_problem(input):
         i = loc[0]
         j = loc[1]
         q_symbol = symbol_dict[status][t][i][j]
-        q_cnf = KB
-        q_cnf.append([q_symbol])
-        g = Glucose3(bootstrap_with=q_cnf.clauses)
-        if not g.propagate()[0]:
+        # q_cnf = KB
+        # q_cnf.append([q_symbol])
+        # g = Glucose3(bootstrap_with=q_cnf.clauses)
+        if not s.solve(assumptions=[q_symbol]):
             res[tuple(q)] = 'F'
         else:
-            for s in statuses:
-                if s != status:
-                    q_cnf = KB
-                    q_cnf.append([symbol_dict[s][t][i][j]])
-                    g = Glucose3(bootstrap_with=q_cnf.clauses)
-                    if g.propagate()[0]:
+            for sa in statuses:
+                if sa != status:
+                    # q_cnf = KB
+                    # q_cnf.append([symbol_dict[s][t][i][j]])
+                    # g = Glucose3(bootstrap_with=q_cnf.clauses)
+                    if s.solve(assumptions=[symbol_dict[sa][t][i][j]]):
                         res[tuple(q)] = '?'
-                        print(s)
+                        print(sa)
                         # break
         if q not in res.keys():
             res[tuple(q)] = 'T'
