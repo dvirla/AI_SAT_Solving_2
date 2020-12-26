@@ -65,9 +65,9 @@ def update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, 
 
     # Update possible_actions_tiles
     if cur_stat == 'S' or cur_stat == '?':
-        possible_actions_tiles['q'][t].append((i, j))
-    elif cur_stat == 'H' or cur_stat == '?':
-        possible_actions_tiles['v'][t].append((i, j))
+        possible_actions_tiles['q'][t].add((i, j))
+    if cur_stat == 'H' or cur_stat == '?':
+        possible_actions_tiles['v'][t].add((i, j))
 
 
 def single_status(symbol_dict, t, i, j):
@@ -90,7 +90,7 @@ def single_status(symbol_dict, t, i, j):
     return temp_cnf
 
 
-def unpopulated_immune_health_axioms(symbol_dict, b, t, i, j):
+def immune_quarantine_axioms(symbol_dict, b, t, i, j):
     # If at time t (i,j) is I, then exits k<t such that v(i,j) at k
     clause = []
     for k in range(min(t, b - 1)):
@@ -147,8 +147,8 @@ def create_KB(observations, symbol_dict, b, n_rows, n_cols):
         count_H_S_dict['H'].append([0, 0])
         count_H_S_dict['S'].append([0, 0])
         # Start new q_v tile list for t
-        possible_actions_tiles['q'].append([])
-        possible_actions_tiles['v'].append([])
+        possible_actions_tiles['q'].append(set())
+        possible_actions_tiles['v'].append(set())
         for i in range(n_rows):
             for j in range(n_cols):
                 cur_stat = observations[t][i][j]
@@ -159,92 +159,98 @@ def create_KB(observations, symbol_dict, b, n_rows, n_cols):
                 update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, cur_stat)
                 #  Add single status constraints
                 KB.extend(single_status(symbol_dict, t, i, j))
-                # Add I, Q axioms
-                KB.extend(unpopulated_immune_health_axioms(symbol_dict, b, t, i, j))
+                # Add I, Q axioms + at t=0 no Q or I
+                KB.extend(immune_quarantine_axioms(symbol_dict, b, t, i, j))
+                if t == 0:
+                    KB.append([-symbol_dict['Q'][t][i][j]])
+                    KB.append([-symbol_dict['I'][t][i][j]])
                 # Add actions effects and precondtions clauses
                 if t < b - 1:
                     KB.extend(actions_clauses(symbol_dict, t, i, j, action_effects_dict))
-
+                    # Single actions
+                    KB.append([-symbol_dict['q'][t][i][j], -symbol_dict['v'][t][i][j]])
+                    KB.append([-symbol_dict['v'][t][i][j], -symbol_dict['q'][t][i][j]])
     return KB, count_H_S_dict, possible_actions_tiles, action_effects_dict
 
 
-def is_unpopulated_immune(observations, t, i, j, b):
-    for k in range(b):
-        if observations[k][i][j] == 'U' or (k <= t and observations[k][i][j] == 'I'):
-            return True
-    return False
-
-
-def check_valid_action(sub_action, observations, t, i, j, b):
-    cur_cord = observations[t][i][j]
-    if sub_action is None:
-        return True
-    elif sub_action == 'v' and cur_cord != 'H' and \
-            cur_cord == '?' and is_unpopulated_immune(observations, t, i, j, b):
-        return False
-    elif sub_action == 'q' and cur_cord != 'S' and \
-            cur_cord == '?' and is_unpopulated_immune(observations, t, i, j, b):
-        return False
-    return True
-
-
-def action_to_conjunction_and_axioms(cnf, locs, action, t, symbol_dict, actions_dict, observations, b):
-    proposition_not_in_del = []  # a.k.a p(t)
-    proposition_not_in_del_next_time = []  # a.k.a p(t+1)
-    proposition_not_in_add = []  # a.k.a p(t)
-    proposition_not_in_add_next_time = []  # a.k.a p(t+1)
-    all_sub_actions_clause = []
-    action_symbol_list = []
-    temp_cnf = cnf
-    for loc, sub_action in zip(locs, action):
-        i = loc[0]
-        j = loc[1]
-        if not check_valid_action(sub_action, observations, t, i, j, b):
-            return False, cnf, action_symbol_list
-        if sub_action is None:
-            # all_sub_actions_clause = all_sub_actions_clause | symbol_dict['q'][t][i][j] | symbol_dict['v'][t][i][j]
-            all_sub_actions_clause.append(symbol_dict['q'][t][i][j])
-            all_sub_actions_clause.append(symbol_dict['v'][t][i][j])
-            action_symbol_list.append(-symbol_dict['q'][t][i][j])
-            action_symbol_list.append(-symbol_dict['v'][t][i][j])
-        else:
-            # all_sub_actions_clause = all_sub_actions_clause | ~symbol_dict[sub_action][t][i][j]
-            all_sub_actions_clause.append(-symbol_dict[sub_action][t][i][j])
-            action_symbol_list.append(symbol_dict[sub_action][t][i][j])
-
-    #     proposition_not_in_del, proposition_not_in_del_next_time, proposition_not_in_add, \
-    #     proposition_not_in_add_next_time = update_not_in_action_effects(sub_action, symbol_dict, actions_dict, t,
-    #                                                                     proposition_not_in_del,
-    #                                                                     proposition_not_in_del_next_time,
-    #                                                                     proposition_not_in_add,
-    #                                                                     proposition_not_in_add_next_time, i, j)
-    #
-    # for pt1, pt2 in zip(proposition_not_in_del, proposition_not_in_del_next_time):
-    #     status, time, row, col = str(pt1).split('_')
-    #     if status == 'H':
-    #         clause = all_sub_actions_clause | ~pt1 | (pt2 | symbol_dict['S'][int(time) + 1][int(row)][int(col)])
-    #     elif status == 'S':
-    #         clause = all_sub_actions_clause | ~pt1 | (pt2 | symbol_dict['H'][int(time) + 1][int(row)][int(col)])
-    #     elif status == 'Q':
-    #         clause = all_sub_actions_clause | ~pt1 | (pt2 | symbol_dict['H'][int(time) + 1][int(row)][int(col)])
-    #     else:
-    #         clause = all_sub_actions_clause | ~pt1 | pt2
-    #     temp_cnf = temp_cnf & clause
-    #
-    # for pt1, pt2 in zip(proposition_not_in_add, proposition_not_in_add_next_time):
-    #     status, time, row, col = str(pt1).split('_')
-    #     if status != 'S' and status != 'H':
-    #         clause = all_sub_actions_clause | pt1 | ~pt2
-    #         temp_cnf = temp_cnf & clause
-    #
-    # cnf = cnf & temp_cnf
-    return all_sub_actions_clause, cnf, action_symbol_list
-
-
-# def positive_negative_frame_axioms_and_linearity(n_rows, n_cols, b, symbol_dict, actions_dict, medics, police,
-#                                                  count_H_S_dict, observations, biggest_symbol):
+#
+# def is_unpopulated_immune(observations, t, i, j, b):
+#     for k in range(b):
+#         if observations[k][i][j] == 'U' or (k <= t and observations[k][i][j] == 'I'):
+#             return True
+#     return False
+#
+#
+# def check_valid_action(sub_action, observations, t, i, j, b):
+#     cur_cord = observations[t][i][j]
+#     if sub_action is None:
+#         return True
+#     elif sub_action == 'v' and cur_cord != 'H' and \
+#             cur_cord == '?' and is_unpopulated_immune(observations, t, i, j, b):
+#         return False
+#     elif sub_action == 'q' and cur_cord != 'S' and \
+#             cur_cord == '?' and is_unpopulated_immune(observations, t, i, j, b):
+#         return False
+#     return True
+#
+#
+# def action_to_conjunction_and_axioms(cnf, locs, action, t, symbol_dict, actions_dict, observations, b):
+#     proposition_not_in_del = []  # a.k.a p(t)
+#     proposition_not_in_del_next_time = []  # a.k.a p(t+1)
+#     proposition_not_in_add = []  # a.k.a p(t)
+#     proposition_not_in_add_next_time = []  # a.k.a p(t+1)
+#     all_sub_actions_clause = []
+#     action_symbol_list = []
+#     temp_cnf = cnf
+#     for loc, sub_action in zip(locs, action):
+#         i = loc[0]
+#         j = loc[1]
+#         if not check_valid_action(sub_action, observations, t, i, j, b):
+#             return False, cnf, action_symbol_list
+#         if sub_action is None:
+#             # all_sub_actions_clause = all_sub_actions_clause | symbol_dict['q'][t][i][j] | symbol_dict['v'][t][i][j]
+#             all_sub_actions_clause.append(symbol_dict['q'][t][i][j])
+#             all_sub_actions_clause.append(symbol_dict['v'][t][i][j])
+#             action_symbol_list.append(-symbol_dict['q'][t][i][j])
+#             action_symbol_list.append(-symbol_dict['v'][t][i][j])
+#         else:
+#             # all_sub_actions_clause = all_sub_actions_clause | ~symbol_dict[sub_action][t][i][j]
+#             all_sub_actions_clause.append(-symbol_dict[sub_action][t][i][j])
+#             action_symbol_list.append(symbol_dict[sub_action][t][i][j])
+#
+#     #     proposition_not_in_del, proposition_not_in_del_next_time, proposition_not_in_add, \
+#     #     proposition_not_in_add_next_time = update_not_in_action_effects(sub_action, symbol_dict, actions_dict, t,
+#     #                                                                     proposition_not_in_del,
+#     #                                                                     proposition_not_in_del_next_time,
+#     #                                                                     proposition_not_in_add,
+#     #                                                                     proposition_not_in_add_next_time, i, j)
+#     #
+#     # for pt1, pt2 in zip(proposition_not_in_del, proposition_not_in_del_next_time):
+#     #     status, time, row, col = str(pt1).split('_')
+#     #     if status == 'H':
+#     #         clause = all_sub_actions_clause | ~pt1 | (pt2 | symbol_dict['S'][int(time) + 1][int(row)][int(col)])
+#     #     elif status == 'S':
+#     #         clause = all_sub_actions_clause | ~pt1 | (pt2 | symbol_dict['H'][int(time) + 1][int(row)][int(col)])
+#     #     elif status == 'Q':
+#     #         clause = all_sub_actions_clause | ~pt1 | (pt2 | symbol_dict['H'][int(time) + 1][int(row)][int(col)])
+#     #     else:
+#     #         clause = all_sub_actions_clause | ~pt1 | pt2
+#     #     temp_cnf = temp_cnf & clause
+#     #
+#     # for pt1, pt2 in zip(proposition_not_in_add, proposition_not_in_add_next_time):
+#     #     status, time, row, col = str(pt1).split('_')
+#     #     if status != 'S' and status != 'H':
+#     #         clause = all_sub_actions_clause | pt1 | ~pt2
+#     #         temp_cnf = temp_cnf & clause
+#     #
+#     # cnf = cnf & temp_cnf
+#     return all_sub_actions_clause, cnf, action_symbol_list
+#
+#
+# def positive_negative_frame_axioms_and_linearity(n_rows, n_cols, b, symbol_dict, actions_effects_dict, medics, police,
+#                                                  count_H_S_dict, observations, biggest_symbol, possible_action_tiles):
 #     cnf = CNF()
-#     symbol_dict['actions'] = []
+#     symbol_dict['flags'] = []
 #     curr_biggest_symbol = biggest_symbol
 #     # create list of all locations:
 #     locs = []
@@ -261,19 +267,19 @@ def action_to_conjunction_and_axioms(cnf, locs, action, t, symbol_dict, actions_
 #         upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
 #         or_temp_clause = []
 #         possible_actions_clauses_dict = {}
-#         symbol_dict['actions'].append([])
+#         symbol_dict['flags'].append([])
 #         for action in itertools.product(['v', 'q', None], repeat=len(locs)):
 #             counter = Counter(action)
 #             if lower_q <= counter['q'] <= upper_q and lower_v <= counter['v'] <= upper_v:
-#                 symbol_dict['actions'][t].append(curr_biggest_symbol)
+#                 symbol_dict['flags'][t].append(curr_biggest_symbol)
 #                 curr_biggest_symbol += 1
-#                 iff_action_flag_implied = [symbol_dict['actions'][t][-1]]
+#                 iff_action_flag_implied = [symbol_dict['flags'][t][-1]]
 #                 iff_action_flag_implies = []
 #                 not_all_sub_actions_clause, temp_cnf, action_symbol_list = action_to_conjunction_and_axioms(temp_cnf,
 #                                                                                                             locs,
 #                                                                                                             action, t,
 #                                                                                                             symbol_dict,
-#                                                                                                             actions_dict,
+#                                                                                                             actions_effects_dict,
 #                                                                                                             observations,
 #                                                                                                             b)
 #                 if not not_all_sub_actions_clause:
@@ -281,12 +287,12 @@ def action_to_conjunction_and_axioms(cnf, locs, action, t, symbol_dict, actions_
 #
 #                 for sym in action_symbol_list:
 #                     iff_action_flag_implied.append(-sym)
-#                     iff_action_flag_implies.append([-symbol_dict['actions'][t][-1], sym])
+#                     iff_action_flag_implies.append([-symbol_dict['flags'][t][-1], sym])
 #
 #                 temp_cnf.extend(iff_action_flag_implies)
 #                 temp_cnf.append(iff_action_flag_implied)
 #                 possible_actions_clauses_dict[action] = not_all_sub_actions_clause
-#                 or_temp_clause.append(symbol_dict['actions'][t][-1])
+#                 or_temp_clause.append(symbol_dict['flags'][t][-1])
 #
 #         cnf.extend(temp_cnf)
 #         for (not_action_clause_1, not_action_clause_2) in itertools.combinations(possible_actions_clauses_dict.values(),
@@ -304,86 +310,162 @@ def force_only_one(flags):
     for f1 in flags:
         or_temp.append(f1)
         for f2 in flags:
-            cnf.append([-f1, -f2])
+            if f1 != f2:
+                cnf.append([-f1, -f2])
     cnf.append(or_temp)
     return cnf
 
 
-def force(t, symbol_dict, flag_symbol, operation, to_op, not_to_op, locs):
-    states_mapper = {
-        'v': 'H',
-        'q': 'S'
-    }
-    state = states_mapper[operation]
-    flag_implies_clause = []
-    and_implies_flag_clause = []
+def action_to_cnf(locs, tiles_to_v, tiles_to_q, flag_symbol, symbol_dict, t):
+    """
+    :param locs: all locs in map
+    :param tiles_to_v: tiles to operate v
+    :param tiles_to_q: tiles to operate q
+    :param flag_symbol: flag for iff action is happening
+    :param symbol_dict:
+    :param t: current time
+    :return: Create iff clause between a flag and set of actions cnf from tiles
+    """
+    # cls = ((a >> (b1 & b2 & b3)) & ((b1 & b2 & b3) >> a))
+    # (b1 | ~a) & (b2 | ~a) & (b3 | ~a) & (a | ~b1 | ~b2 | ~b3)
+    q_v_noop_clause_implies_flag = []
+    flag_implies_q_v_noop_clause = [flag_symbol]
+    for loc_to_q in tiles_to_q:
+        i = loc_to_q[0]
+        j = loc_to_q[1]
+        flag_implies_q_v_noop_clause.append(-symbol_dict['q'][t][i][j])
+        q_v_noop_clause_implies_flag.append([-flag_symbol, symbol_dict['q'][t][i][j]])
+    for loc_to_v in tiles_to_v:
+        i = loc_to_v[0]
+        j = loc_to_v[1]
+        flag_implies_q_v_noop_clause.append(-symbol_dict['v'][t][i][j])
+        q_v_noop_clause_implies_flag.append([-flag_symbol, symbol_dict['v'][t][i][j]])
+    for loc_to_noop in locs - tiles_to_v - tiles_to_q:
+        i = loc_to_noop[0]
+        j = loc_to_noop[1]
 
-    for l in to_op:
-        i, j = l[0], l[1]
-        flag_implies_clause.append([-flag_symbol, symbol_dict[state][t][i][j]])
-        flag_implies_clause.append([-flag_symbol, symbol_dict[operation][t][i][j]])
-        and_implies_flag_clause.append(-symbol_dict[operation][t][i][j])
-        and_implies_flag_clause.append(-symbol_dict[state][t][i][j])
-        # configuration_clause = configuration_clause & symbol_dict[state][t][i][j] & symbol_dict[operation][t][i][j]
-    for l in not_to_op:
-        i, j = l[0], l[1]
-        flag_implies_clause.append([-flag_symbol, symbol_dict[state][t][i][j]])
-        flag_implies_clause.append([-flag_symbol, -symbol_dict[operation][t][i][j]])
-        and_implies_flag_clause.append(symbol_dict[operation][t][i][j])
-        and_implies_flag_clause.append(-symbol_dict[state][t][i][j])
+        flag_implies_q_v_noop_clause.append(symbol_dict['q'][t][i][j])
+        flag_implies_q_v_noop_clause.append(symbol_dict['v'][t][i][j])
 
-        # configuration_clause = configuration_clause & symbol_dict[state][t][i][j] & ~symbol_dict[operation][t][i][j]
-    for l in set(locs) - to_op - not_to_op:
-        i, j = l[0], l[1]
-        flag_implies_clause.append([-flag_symbol, -symbol_dict[state][t][i][j]])
-        and_implies_flag_clause.append(symbol_dict[state][t][i][j])
+        q_v_noop_clause_implies_flag.append([-flag_symbol, -symbol_dict['q'][t][i][j]])
+        q_v_noop_clause_implies_flag.append([-flag_symbol, -symbol_dict['v'][t][i][j]])
 
-        # configuration_clause = configuration_clause & ~symbol_dict[state][t][i][j]
+    cnf = CNF(from_clauses=[flag_implies_q_v_noop_clause])
+    cnf.extend(q_v_noop_clause_implies_flag)
 
-    cnf = CNF(from_clauses=flag_implies_clause)
-    cnf.append(and_implies_flag_clause)
     return cnf
 
 
-def number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, operation, allowed, biggest_symbol):
+def positive_negative_frame_axioms_and_linearity(n_rows, n_cols, b, symbol_dict, actions_effects_dict, medics, police,
+                                                 count_H_S_dict, biggest_symbol, possible_action_tiles):
+    symbol_dict['flags'] = []
+    curr_biggest_symbol = biggest_symbol + 1
     # create list of all locations:
-    cnf = CNF()
-    locs = []
-    locs_num = 0
+    locs = set()
     for i in range(n_rows):
         for j in range(n_cols):
-            locs.append((i, j))
-            locs_num += 1
+            locs.add((i, j))
 
-    serial = biggest_symbol
+    linearity_cnf = CNF()
+    # linearity
     for t in range(b - 1):
-        flags = []
-        # print('start first leg of time {}'.format(t))
-        # configurations where number of teams available is enough to operate on all legal locs
-        # for i in range(allowed + 1): # todo
-        #     for locs_to_op in combinations(locs, i):
-        #         # flag_sign = str(t) + str(i) + str(serial)
-        #         temp_cnf = force(t, symbol_dict, serial, operation, set(locs_to_op), set(), locs)
-        #         cnf.extend(temp_cnf)
-        #         flags.append(serial)
-        #         serial += 1
+        lower_q = min(police, count_H_S_dict['S'][t][WITHOUT_QUESTION_MARK])
+        upper_q = min(police, count_H_S_dict['S'][t][WITH_QUESTION_MARK])
+        lower_v = min(medics, count_H_S_dict['H'][t][WITHOUT_QUESTION_MARK])
+        upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
+        symbol_dict['flags'].append([])
+        for q_runner in range(lower_q, upper_q + 1):
+            for v_runner in range(lower_v, upper_v + 1):
+                # Choose from every possible tile in possible_action_tiles
+                for tiles_to_q in itertools.combinations(possible_action_tiles['q'][t], q_runner):
+                    for tiles_to_v in itertools.combinations(possible_action_tiles['v'][t], v_runner):
+                        # Add new symbol to flag an action
+                        symbol_dict['flags'][t].append(curr_biggest_symbol)
+                        cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol, symbol_dict, t)
+                        curr_biggest_symbol += 1
+                        linearity_cnf.extend(cur_op_iff_flag)
 
-        # print('start second leg of time {}'.format(t))
-        # configurations where number of teams available is NOT enough to operate on all legal locs
-        # for legal_num in range(allowed + 1, locs_num):
-        #     for total in combinations(locs, legal_num):
-        #         for to_op in combinations(total, allowed):
-        #             not_to_op = set(total) - set(to_op)
-        #             # flag_sign = str(t) + str(i) + str(serial)
-        #             temp_cnf = force(t, symbol_dict, serial, operation,
-        #                               set(to_op), not_to_op, locs)
-        #             cnf.extend(temp_cnf)
-        #             flags.append(serial)
-        #             serial += 1
+        force_one_action_cnf = force_only_one(symbol_dict['flags'][t])
+        linearity_cnf.extend(force_one_action_cnf)
 
-        # cnf.extend(force_only_one(flags))
+    return linearity_cnf
 
-    return cnf
+
+# def force(t, symbol_dict, flag_symbol, operation, to_op, not_to_op, locs):
+#     states_mapper = {
+#         'v': 'H',
+#         'q': 'S'
+#     }
+#     state = states_mapper[operation]
+#     flag_implies_clause = []
+#     and_implies_flag_clause = [flag_symbol]
+#
+#     for l in to_op:
+#         i, j = l[0], l[1]
+#         flag_implies_clause.append([-flag_symbol, symbol_dict[state][t][i][j]])
+#         flag_implies_clause.append([-flag_symbol, symbol_dict[operation][t][i][j]])
+#         and_implies_flag_clause.append(-symbol_dict[operation][t][i][j])
+#         and_implies_flag_clause.append(-symbol_dict[state][t][i][j])
+#         # configuration_clause = configuration_clause & symbol_dict[state][t][i][j] & symbol_dict[operation][t][i][j]
+#     for l in not_to_op:
+#         i, j = l[0], l[1]
+#         flag_implies_clause.append([-flag_symbol, symbol_dict[state][t][i][j]])
+#         flag_implies_clause.append([-flag_symbol, -symbol_dict[operation][t][i][j]])
+#         and_implies_flag_clause.append(symbol_dict[operation][t][i][j])
+#         and_implies_flag_clause.append(-symbol_dict[state][t][i][j])  # TODO: maybe not necessary
+#
+#         # configuration_clause = configuration_clause & symbol_dict[state][t][i][j] & ~symbol_dict[operation][t][i][j]
+#     for l in set(locs) - to_op - not_to_op:
+#         i, j = l[0], l[1]
+#         flag_implies_clause.append([-flag_symbol, -symbol_dict[state][t][i][j]])
+#         and_implies_flag_clause.append(symbol_dict[state][t][i][j])  # TODO: maybe not necessary
+#
+#         # configuration_clause = configuration_clause & ~symbol_dict[state][t][i][j]
+#
+#     cnf = CNF(from_clauses=flag_implies_clause)
+#     cnf.append(and_implies_flag_clause)
+#     return cnf
+#
+#
+# def number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, operation, allowed, biggest_symbol):
+#     # create list of all locations:
+#     cnf = CNF()
+#     locs = []
+#     locs_num = 0
+#     for i in range(n_rows):
+#         for j in range(n_cols):
+#             locs.append((i, j))
+#             locs_num += 1
+#
+#     serial = biggest_symbol + 1
+#     for t in range(b - 1):
+#         flags = []
+#         # print('start first leg of time {}'.format(t))
+#         # configurations where number of teams available is enough to operate on all legal locs
+#         for i in range(allowed + 1):  # todo
+#             for locs_to_op in combinations(locs, i):
+#                 # flag_sign = str(t) + str(i) + str(serial)
+#                 temp_cnf = force(t, symbol_dict, serial, operation, set(locs_to_op), set(), locs)
+#                 cnf.extend(temp_cnf)
+#                 flags.append(serial)
+#                 serial += 1
+#
+#         # print('start second leg of time {}'.format(t))
+#         # configurations where number of teams available is NOT enough to operate on all legal locs
+#         for legal_num in range(allowed + 1, locs_num):
+#             for total in combinations(locs, legal_num):
+#                 for to_op in combinations(total, allowed):
+#                     not_to_op = set(total) - set(to_op)
+#                     # flag_sign = str(t) + str(i) + str(serial)
+#                     temp_cnf = force(t, symbol_dict, serial, operation,
+#                                       set(to_op), not_to_op, locs)
+#                     cnf.extend(temp_cnf)
+#                     flags.append(serial)
+#                     serial += 1
+#
+#         cnf.extend(force_only_one(flags))
+#
+#     return cnf, serial
 
 
 def spread_healing_clauses(n_rows, n_cols, b, symbol_dict):
@@ -445,22 +527,19 @@ def solve_problem(input):
     n_rows = len(observations[0])
     n_cols = len(observations[0][0])
 
-    t1 = time.time()
     symbol_dict, biggest_symbol = create_symbols(b, n_rows, n_cols)
     KB, count_H_S_dict, possible_actions_tiles, action_effects_dict = create_KB(observations, symbol_dict, b, n_rows,
                                                                                 n_cols)
     KB.extend(spread_healing_clauses(n_rows, n_cols, b, symbol_dict))
-    KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'q', police, biggest_symbol))
-    KB.extend(number_of_actions_constraints(n_rows, n_cols, b, symbol_dict, 'v', medics, biggest_symbol))
-
-    # print(f'{time.time() - t1:.3f}')
+    KB.extend(positive_negative_frame_axioms_and_linearity(n_rows, n_cols, b, symbol_dict, action_effects_dict, medics, police,
+                                                 count_H_S_dict, biggest_symbol, possible_actions_tiles))
 
     res = {}
     statuses = ['H', 'Q', 'U', 'S', 'I']
 
     # s = Solver(bootstrap_with=KB)
     # print(s.solve())
-    g = Glucose3(bootstrap_with=KB.clauses)
+    # g = Glucose3(bootstrap_with=KB.clauses)
     # print(g.propagate())
 
     for q in queries:
@@ -483,8 +562,8 @@ def solve_problem(input):
                     g = Glucose3(bootstrap_with=q_cnf.clauses)
                     if g.propagate()[0]:
                         res[tuple(q)] = '?'
-                        # print(s)
-                        #break
+                        print(s)
+                        # break
         if q not in res.keys():
             res[tuple(q)] = 'T'
 
