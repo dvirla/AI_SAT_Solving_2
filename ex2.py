@@ -37,16 +37,19 @@ def create_symbols(b, n_rows, n_cols):
 
 def update_known_stat(t, i, j, symbol_dict, cur_stat, b):
     temp_cnf = CNF()
-    U_flag = 1
-    if cur_stat != 'U':
-        U_flag = -1
+    # U_flag = 1
+    # if cur_stat != 'U':
+    #     U_flag = -1
     for k in range(b):
-        temp_cnf.append([U_flag * symbol_dict['U'][k][i][j]])
-    if cur_stat == 'I':
-        for k in range(t, b):
-            temp_cnf.append([symbol_dict['I'][k][i][j]])
-    if cur_stat != 'U' and cur_stat != 'I':
-        temp_cnf.append([symbol_dict[cur_stat][t][i][j]])
+        # temp_cnf.append([U_flag * symbol_dict['U'][k][i][j]])
+        temp_cnf.append([-symbol_dict['U'][t][i][j], symbol_dict['U'][k][i][j]])
+        temp_cnf.append([symbol_dict['U'][t][i][j], -symbol_dict['U'][k][i][j]])
+    # if cur_stat == 'I':
+    for k in range(t, b):
+        temp_cnf.append([-symbol_dict['I'][t][i][j], symbol_dict['I'][k][i][j]])
+
+    # if cur_stat != 'U' and cur_stat != 'I':
+    temp_cnf.append([symbol_dict[cur_stat][t][i][j]])
     return temp_cnf
 
 
@@ -120,11 +123,6 @@ def actions_clauses(symbol_dict, t, i, j, actions_dict):
     add_q = [-symbol_q, symbol_dict['Q'][t + 1][i][j]]
     # Del for quarantine
     del_q = [-symbol_q, -symbol_dict['S'][t + 1][i][j]]
-
-    # actions_dict[symbol_v] = (
-    #     symbol_dict['H'][t][i][j], symbol_dict['I'][t + 1][i][j], symbol_dict['H'][t + 1][i][j])
-    # actions_dict[symbol_q] = (
-    #     symbol_dict['S'][t][i][j], symbol_dict['Q'][t + 1][i][j], symbol_dict['S'][t + 1][i][j])
 
     clause = CNF(from_clauses=[pre_v, add_v, del_v, pre_q, add_q, del_q])
     return clause
@@ -238,45 +236,10 @@ def action_to_cnf(locs, tiles_to_v, tiles_to_q, flag_symbol, symbol_dict, t):
 
     return cnf
 
-#
-# def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
-#                                                  count_H_S_dict, biggest_symbol, possible_action_tiles):
-#     symbol_dict['flags'] = []
-#     curr_biggest_symbol = biggest_symbol + 1
-#     # create list of all locations:
-#     locs = set()
-#     for i in range(n_rows):
-#         for j in range(n_cols):
-#             locs.add((i, j))
-#
-#     linearity_cnf = CNF()
-#     # linearity
-#     for t in range(b - 1):
-#         lower_q = min(police, count_H_S_dict['S'][t][WITHOUT_QUESTION_MARK])
-#         upper_q = min(police, count_H_S_dict['S'][t][WITH_QUESTION_MARK])
-#         lower_v = min(medics, count_H_S_dict['H'][t][WITHOUT_QUESTION_MARK])
-#         upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
-#         symbol_dict['flags'].append([])
-#         for q_runner in range(lower_q, upper_q + 1):
-#             for v_runner in range(lower_v, upper_v + 1):
-#                 # Choose from every possible tile in possible_action_tiles
-#                 for tiles_to_q in itertools.combinations(possible_action_tiles['q'][t], q_runner):
-#                     for tiles_to_v in itertools.combinations(possible_action_tiles['v'][t], v_runner):
-#                         # Add new symbol to flag an action
-#                         symbol_dict['flags'][t].append(curr_biggest_symbol)
-#                         cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
-#                                                         symbol_dict, t)
-#                         curr_biggest_symbol += 1
-#                         linearity_cnf.extend(cur_op_iff_flag)
-#
-#         force_one_action_cnf = force_only_one(symbol_dict['flags'][t])
-#         linearity_cnf.extend(force_one_action_cnf)
-#
-#     return linearity_cnf
 
 def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
-              count_H_S_dict, biggest_symbol, possible_action_tiles):
-    # symbol_dict['flags'] = []
+                                                 count_H_S_dict, biggest_symbol, possible_action_tiles):
+    symbol_dict['flags'] = []
     curr_biggest_symbol = biggest_symbol + 1
     # create list of all locations:
     locs = set()
@@ -291,28 +254,64 @@ def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
         upper_q = min(police, count_H_S_dict['S'][t][WITH_QUESTION_MARK])
         lower_v = min(medics, count_H_S_dict['H'][t][WITHOUT_QUESTION_MARK])
         upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
-        # symbol_dict['flags'].append([])
-        flags = []
+        symbol_dict['flags'].append([])
         for q_runner in range(lower_q, upper_q + 1):
             for v_runner in range(lower_v, upper_v + 1):
                 # Choose from every possible tile in possible_action_tiles
-                for p in itertools.product(
-                        itertools.combinations(possible_action_tiles['q'][t], q_runner),
-                        itertools.combinations(possible_action_tiles['v'][t], v_runner)):
-                    tiles_to_q, tiles_to_v = p[0], p[1]
+                for tiles_to_q in itertools.combinations(possible_action_tiles['q'][t], q_runner):
+                    for tiles_to_v in itertools.combinations(possible_action_tiles['v'][t], v_runner):
+                        # Add new symbol to flag an action
+                        symbol_dict['flags'][t].append(curr_biggest_symbol)
+                        cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
+                                                        symbol_dict, t)
+                        curr_biggest_symbol += 1
+                        linearity_cnf.extend(cur_op_iff_flag)
 
-                    # Add new symbol to flag an action
-                    # symbol_dict['flags'][t].append(curr_biggest_symbol)
-                    flags.append(curr_biggest_symbol)
-                    cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
-                                                    symbol_dict, t)
-                    curr_biggest_symbol += 1
-                    linearity_cnf.extend(cur_op_iff_flag)
-
-        force_one_action_cnf = force_only_one(flags)
+        force_one_action_cnf = force_only_one(symbol_dict['flags'][t])
         linearity_cnf.extend(force_one_action_cnf)
 
     return linearity_cnf
+
+
+# def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
+#               count_H_S_dict, biggest_symbol, possible_action_tiles):
+#     # symbol_dict['flags'] = []
+#     curr_biggest_symbol = biggest_symbol + 1
+#     # create list of all locations:
+#     locs = set()
+#     for i in range(n_rows):
+#         for j in range(n_cols):
+#             locs.add((i, j))
+#
+#     linearity_cnf = CNF()
+#     # linearity
+#     for t in range(b - 1):
+#         lower_q = min(police, count_H_S_dict['S'][t][WITHOUT_QUESTION_MARK])
+#         upper_q = min(police, count_H_S_dict['S'][t][WITH_QUESTION_MARK])
+#         lower_v = min(medics, count_H_S_dict['H'][t][WITHOUT_QUESTION_MARK])
+#         upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
+#         # symbol_dict['flags'].append([])
+#         flags = []
+#         for q_runner in range(lower_q, upper_q + 1):
+#             for v_runner in range(lower_v, upper_v + 1):
+#                 # Choose from every possible tile in possible_action_tiles
+#                 for p in itertools.product(
+#                         itertools.combinations(possible_action_tiles['q'][t], q_runner),
+#                         itertools.combinations(possible_action_tiles['v'][t], v_runner)):
+#                     tiles_to_q, tiles_to_v = p[0], p[1]
+#
+#                     # Add new symbol to flag an action
+#                     # symbol_dict['flags'][t].append(curr_biggest_symbol)
+#                     flags.append(curr_biggest_symbol)
+#                     cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
+#                                                     symbol_dict, t)
+#                     curr_biggest_symbol += 1
+#                     linearity_cnf.extend(cur_op_iff_flag)
+#
+#         force_one_action_cnf = force_only_one(flags)
+#         # linearity_cnf.extend(force_one_action_cnf)
+#
+#     return linearity_cnf
 
 
 def s_iff_have_sick_neighbor(n_rows, n_cols, symbol_dict, t, s, neighbors):
@@ -468,4 +467,5 @@ def solve_problem(input):
         if q not in res.keys():
             res[tuple(q)] = 'T'
 
+    # objgraph.show_most_common_types()
     return res
