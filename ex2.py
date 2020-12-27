@@ -1,10 +1,6 @@
-import time
 from pysat.formula import CNF
 from pysat.solvers import Solver
 import itertools
-from itertools import combinations
-from collections import Counter
-from pysat.solvers import Glucose3
 
 ids = ['313329666', '206330342']
 PRE = 0
@@ -54,7 +50,7 @@ def update_known_stat(t, i, j, symbol_dict, cur_stat, b):
     return temp_cnf
 
 
-def update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, cur_stat):
+def update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, cur_stat, next_stat):
     # Update count_H_S_dict
     if cur_stat == '?':
         count_H_S_dict['H'][t][WITH_QUESTION_MARK] += 1
@@ -64,9 +60,9 @@ def update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, 
         count_H_S_dict[cur_stat][t][WITH_QUESTION_MARK] += 1
 
     # Update possible_actions_tiles
-    if cur_stat == 'S' or cur_stat == '?':
+    if (cur_stat == 'S' or cur_stat == '?') and (next_stat == 'Q' or next_stat == '?'):
         possible_actions_tiles['q'][t].add((i, j))
-    if cur_stat == 'H' or cur_stat == '?':
+    if cur_stat == 'H' or cur_stat == '?' and (next_stat == 'I' or next_stat == '?'):
         possible_actions_tiles['v'][t].add((i, j))
 
 
@@ -125,13 +121,21 @@ def actions_clauses(symbol_dict, t, i, j, actions_dict):
     # Del for quarantine
     del_q = [-symbol_q, -symbol_dict['S'][t + 1][i][j]]
 
-    actions_dict[symbol_v] = (
-        symbol_dict['H'][t][i][j], symbol_dict['I'][t + 1][i][j], symbol_dict['H'][t + 1][i][j])
-    actions_dict[symbol_q] = (
-        symbol_dict['S'][t][i][j], symbol_dict['Q'][t + 1][i][j], symbol_dict['S'][t + 1][i][j])
+    # actions_dict[symbol_v] = (
+    #     symbol_dict['H'][t][i][j], symbol_dict['I'][t + 1][i][j], symbol_dict['H'][t + 1][i][j])
+    # actions_dict[symbol_q] = (
+    #     symbol_dict['S'][t][i][j], symbol_dict['Q'][t + 1][i][j], symbol_dict['S'][t + 1][i][j])
 
     clause = CNF(from_clauses=[pre_v, add_v, del_v, pre_q, add_q, del_q])
     return clause
+
+
+# def change_entails_action(symbol_dict, t, i, j):
+#     cnf = CNF()
+#     cnf.append([-symbol_dict['H'][t][i][j], -symbol_dict['I'][t + 1][i][j], symbol_dict['v'][t][i][j]])
+#     cnf.append([-symbol_dict['S'][t][i][j], -symbol_dict['Q'][t + 1][i][j], symbol_dict['q'][t][i][j]])
+#
+#     return cnf
 
 
 def create_KB(observations, symbol_dict, b, n_rows, n_cols):
@@ -152,8 +156,12 @@ def create_KB(observations, symbol_dict, b, n_rows, n_cols):
                 if cur_stat != '?':
                     # Add known status
                     KB.extend(update_known_stat(t, i, j, symbol_dict, cur_stat, b))
-                # Update count_H_S and possible_actions dicts
-                update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, cur_stat)
+                # Update count_H_S and possible_actions dicts, actions take place only before b - 1
+                if t < b - 1:
+                    update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, cur_stat,
+                                               observations[t + 1][i][j])
+
+                    # KB.extend(change_entails_action(symbol_dict, t, i, j))
                 #  Add single status constraints
                 KB.extend(single_status(symbol_dict, t, i, j))
                 # Add I, Q axioms + at t=0 no Q or I
@@ -167,18 +175,27 @@ def create_KB(observations, symbol_dict, b, n_rows, n_cols):
                     # Single actions
                     KB.append([-symbol_dict['q'][t][i][j], -symbol_dict['v'][t][i][j]])
                     KB.append([-symbol_dict['v'][t][i][j], -symbol_dict['q'][t][i][j]])
-    return KB, count_H_S_dict, possible_actions_tiles, action_effects_dict
+    # return KB, count_H_S_dict, possible_actions_tiles, action_effects_dict
+    return KB, count_H_S_dict, possible_actions_tiles
 
 
 def force_only_one(flags):
     or_temp = []
     cnf = CNF()
-    for f1 in flags:
+    # for f1 in flags:
+    #     or_temp.append(f1)
+    #     for f2 in flags:
+    #         if f1 != f2:
+    #             cnf.append([-f1, -f2])
+    # cnf.append(or_temp)
+    l = len(flags)
+    for i, f1 in enumerate(flags):
         or_temp.append(f1)
-        for f2 in flags:
-            if f1 != f2:
-                cnf.append([-f1, -f2])
+        for j in range(i + 1, l):
+            f2 = flags[j]
+            cnf.append([-f1, -f2])
     cnf.append(or_temp)
+
     return cnf
 
 
@@ -221,10 +238,45 @@ def action_to_cnf(locs, tiles_to_v, tiles_to_q, flag_symbol, symbol_dict, t):
 
     return cnf
 
+#
+# def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
+#                                                  count_H_S_dict, biggest_symbol, possible_action_tiles):
+#     symbol_dict['flags'] = []
+#     curr_biggest_symbol = biggest_symbol + 1
+#     # create list of all locations:
+#     locs = set()
+#     for i in range(n_rows):
+#         for j in range(n_cols):
+#             locs.add((i, j))
+#
+#     linearity_cnf = CNF()
+#     # linearity
+#     for t in range(b - 1):
+#         lower_q = min(police, count_H_S_dict['S'][t][WITHOUT_QUESTION_MARK])
+#         upper_q = min(police, count_H_S_dict['S'][t][WITH_QUESTION_MARK])
+#         lower_v = min(medics, count_H_S_dict['H'][t][WITHOUT_QUESTION_MARK])
+#         upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
+#         symbol_dict['flags'].append([])
+#         for q_runner in range(lower_q, upper_q + 1):
+#             for v_runner in range(lower_v, upper_v + 1):
+#                 # Choose from every possible tile in possible_action_tiles
+#                 for tiles_to_q in itertools.combinations(possible_action_tiles['q'][t], q_runner):
+#                     for tiles_to_v in itertools.combinations(possible_action_tiles['v'][t], v_runner):
+#                         # Add new symbol to flag an action
+#                         symbol_dict['flags'][t].append(curr_biggest_symbol)
+#                         cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
+#                                                         symbol_dict, t)
+#                         curr_biggest_symbol += 1
+#                         linearity_cnf.extend(cur_op_iff_flag)
+#
+#         force_one_action_cnf = force_only_one(symbol_dict['flags'][t])
+#         linearity_cnf.extend(force_one_action_cnf)
+#
+#     return linearity_cnf
 
-def linearity(n_rows, n_cols, b, symbol_dict, actions_effects_dict, medics, police,
-                                                 count_H_S_dict, biggest_symbol, possible_action_tiles):
-    symbol_dict['flags'] = []
+def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
+              count_H_S_dict, biggest_symbol, possible_action_tiles):
+    # symbol_dict['flags'] = []
     curr_biggest_symbol = biggest_symbol + 1
     # create list of all locations:
     locs = set()
@@ -239,20 +291,25 @@ def linearity(n_rows, n_cols, b, symbol_dict, actions_effects_dict, medics, poli
         upper_q = min(police, count_H_S_dict['S'][t][WITH_QUESTION_MARK])
         lower_v = min(medics, count_H_S_dict['H'][t][WITHOUT_QUESTION_MARK])
         upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
-        symbol_dict['flags'].append([])
+        # symbol_dict['flags'].append([])
+        flags = []
         for q_runner in range(lower_q, upper_q + 1):
             for v_runner in range(lower_v, upper_v + 1):
                 # Choose from every possible tile in possible_action_tiles
-                for tiles_to_q in itertools.combinations(possible_action_tiles['q'][t], q_runner):
-                    for tiles_to_v in itertools.combinations(possible_action_tiles['v'][t], v_runner):
-                        # Add new symbol to flag an action
-                        symbol_dict['flags'][t].append(curr_biggest_symbol)
-                        cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
-                                                        symbol_dict, t)
-                        curr_biggest_symbol += 1
-                        linearity_cnf.extend(cur_op_iff_flag)
+                for p in itertools.product(
+                        itertools.combinations(possible_action_tiles['q'][t], q_runner),
+                        itertools.combinations(possible_action_tiles['v'][t], v_runner)):
+                    tiles_to_q, tiles_to_v = p[0], p[1]
 
-        force_one_action_cnf = force_only_one(symbol_dict['flags'][t])
+                    # Add new symbol to flag an action
+                    # symbol_dict['flags'][t].append(curr_biggest_symbol)
+                    flags.append(curr_biggest_symbol)
+                    cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
+                                                    symbol_dict, t)
+                    curr_biggest_symbol += 1
+                    linearity_cnf.extend(cur_op_iff_flag)
+
+        force_one_action_cnf = force_only_one(flags)
         linearity_cnf.extend(force_one_action_cnf)
 
     return linearity_cnf
@@ -375,11 +432,16 @@ def solve_problem(input):
     n_cols = len(observations[0][0])
 
     symbol_dict, biggest_symbol = create_symbols(b, n_rows, n_cols)
-    KB, count_H_S_dict, possible_actions_tiles, action_effects_dict = create_KB(observations, symbol_dict, b, n_rows,
+    # KB, count_H_S_dict, possible_actions_tiles, action_effects_dict = create_KB(observations, symbol_dict, b, n_rows,
+    #                                                                             n_cols)
+    KB, count_H_S_dict, possible_actions_tiles = create_KB(observations, symbol_dict, b, n_rows,
                                                                                 n_cols)
     temp_cnf, biggest_symbol = spread_healing_clauses(n_rows, n_cols, b, symbol_dict, biggest_symbol)
     KB.extend(temp_cnf)
-    KB.extend(linearity(n_rows, n_cols, b, symbol_dict, action_effects_dict, medics,
+    # KB.extend(linearity(n_rows, n_cols, b, symbol_dict, action_effects_dict, medics,
+    #                                                        police,
+    #                                                        count_H_S_dict, biggest_symbol, possible_actions_tiles))
+    KB.extend(linearity(n_rows, n_cols, b, symbol_dict, medics,
                                                            police,
                                                            count_H_S_dict, biggest_symbol, possible_actions_tiles))
 
