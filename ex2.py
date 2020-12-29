@@ -108,23 +108,32 @@ def immune_quarantine_axioms(symbol_dict, b, t, i, j):
 
 
 def actions_clauses(symbol_dict, t, i, j, actions_dict):
-    symbol_v = symbol_dict['v'][t][i][j]
-    # Precondition for vaccinate
-    pre_v = [-symbol_v, symbol_dict['H'][t][i][j]]
-    # Add for vaccinate
-    add_v = [-symbol_v, symbol_dict['I'][t + 1][i][j]]
-    # Del for vaccinate
-    del_v = [-symbol_v, -symbol_dict['H'][t + 1][i][j]]
+    clause = CNF()
+    if (i, j) in actions_dict['v'][t]:
+        symbol_v = symbol_dict['v'][t][i][j]
+        # Precondition for vaccinate
+        pre_v = [-symbol_v, symbol_dict['H'][t][i][j]]
+        # Add for vaccinate
+        add_v = [-symbol_v, symbol_dict['I'][t + 1][i][j]]
+        # Del for vaccinate
+        del_v = [-symbol_v, -symbol_dict['H'][t + 1][i][j]]
+        clause.append(pre_v)
+        clause.append(add_v)
+        clause.append(del_v)
 
-    symbol_q = symbol_dict['q'][t][i][j]
-    # Precondition for quarantine
-    pre_q = [-symbol_q, symbol_dict['S'][t][i][j]]
-    # Add for quarantine
-    add_q = [-symbol_q, symbol_dict['Q'][t + 1][i][j]]
-    # Del for quarantine
-    del_q = [-symbol_q, -symbol_dict['S'][t + 1][i][j]]
+    if (i, j) in actions_dict['q'][t]:
+        symbol_q = symbol_dict['q'][t][i][j]
+        # Precondition for quarantine
+        pre_q = [-symbol_q, symbol_dict['S'][t][i][j]]
+        # Add for quarantine
+        add_q = [-symbol_q, symbol_dict['Q'][t + 1][i][j]]
+        # Del for quarantine
+        del_q = [-symbol_q, -symbol_dict['S'][t + 1][i][j]]
+        clause.append(pre_q)
+        clause.append(add_q)
+        clause.append(del_q)
 
-    clause = CNF(from_clauses=[pre_v, add_v, del_v, pre_q, add_q, del_q])
+    # clause = CNF(from_clauses=[pre_v, add_v, del_v, pre_q, add_q, del_q])
     return clause
 
 
@@ -140,7 +149,6 @@ def create_KB(observations, symbol_dict, b, n_rows, n_cols):
     KB = CNF()
     count_H_S_dict = {'H': [], 'S': []}
     possible_actions_tiles = {'q': [], 'v': []}
-    action_effects_dict = {}
     for t in range(b):
         # Start new H_S count for t
         count_H_S_dict['H'].append([0, 0])
@@ -169,7 +177,7 @@ def create_KB(observations, symbol_dict, b, n_rows, n_cols):
                     KB.append([-symbol_dict['I'][t][i][j]])
                 # Add actions effects and precondtions clauses
                 if t < b - 1:
-                    KB.extend(actions_clauses(symbol_dict, t, i, j, action_effects_dict))
+                    KB.extend(actions_clauses(symbol_dict, t, i, j, possible_actions_tiles))
                     # Single actions
                     KB.append([-symbol_dict['q'][t][i][j], -symbol_dict['v'][t][i][j]])
                     KB.append([-symbol_dict['v'][t][i][j], -symbol_dict['q'][t][i][j]])
