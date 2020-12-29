@@ -35,18 +35,14 @@ def create_symbols(b, n_rows, n_cols):
     return symbol_dict, counter
 
 
-def update_known_stat(t, i, j, symbol_dict, cur_stat, b):
+def update_known_stat(t, i, j, symbol_dict, b):
     temp_cnf = CNF()
-    U_flag = 1
-    if cur_stat != 'U':
-        U_flag = -1
     for k in range(b):
-        temp_cnf.append([U_flag * symbol_dict['U'][k][i][j]])
-    if cur_stat == 'I':
-        for k in range(t, b):
-            temp_cnf.append([symbol_dict['I'][k][i][j]])
-    if cur_stat != 'U' and cur_stat != 'I':
-        temp_cnf.append([symbol_dict[cur_stat][t][i][j]])
+        temp_cnf.append([-symbol_dict['U'][t][i][j], symbol_dict['U'][k][i][j]])
+        temp_cnf.append([symbol_dict['U'][t][i][j], -symbol_dict['U'][k][i][j]])
+    for k in range(t, b):
+        temp_cnf.append([-symbol_dict['I'][t][i][j], symbol_dict['I'][k][i][j]])
+
     return temp_cnf
 
 
@@ -67,7 +63,6 @@ def update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, 
 
 
 def single_status(symbol_dict, t, i, j):
-    # Add single status constraints
     """
     Updating cnf by adding clauses according to the following rules:
     1. each tile at time t has at least one status (or_temp_clause)
@@ -105,44 +100,39 @@ def immune_quarantine_axioms(symbol_dict, b, t, i, j):
 
 
 def actions_clauses(symbol_dict, t, i, j, actions_dict):
-    symbol_v = symbol_dict['v'][t][i][j]
-    # Precondition for vaccinate
-    pre_v = [-symbol_v, symbol_dict['H'][t][i][j]]
-    # Add for vaccinate
-    add_v = [-symbol_v, symbol_dict['I'][t + 1][i][j]]
-    # Del for vaccinate
-    del_v = [-symbol_v, -symbol_dict['H'][t + 1][i][j]]
+    clause = CNF()
+    if (i,j) in actions_dict['v'][t]:
+        symbol_v = symbol_dict['v'][t][i][j]
+        # Precondition for vaccinate
+        pre_v = [-symbol_v, symbol_dict['H'][t][i][j]]
+        # Add for vaccinate
+        add_v = [-symbol_v, symbol_dict['I'][t + 1][i][j]]
+        # Del for vaccinate
+        del_v = [-symbol_v, -symbol_dict['H'][t + 1][i][j]]
+        clause.append(pre_v)
+        clause.append(add_v)
+        clause.append(del_v)
 
-    symbol_q = symbol_dict['q'][t][i][j]
-    # Precondition for quarantine
-    pre_q = [-symbol_q, symbol_dict['S'][t][i][j]]
-    # Add for quarantine
-    add_q = [-symbol_q, symbol_dict['Q'][t + 1][i][j]]
-    # Del for quarantine
-    del_q = [-symbol_q, -symbol_dict['S'][t + 1][i][j]]
+    if (i, j) in actions_dict['q'][t]:
+        symbol_q = symbol_dict['q'][t][i][j]
+        # Precondition for quarantine
+        pre_q = [-symbol_q, symbol_dict['S'][t][i][j]]
+        # Add for quarantine
+        add_q = [-symbol_q, symbol_dict['Q'][t + 1][i][j]]
+        # Del for quarantine
+        del_q = [-symbol_q, -symbol_dict['S'][t + 1][i][j]]
+        clause.append(pre_q)
+        clause.append(add_q)
+        clause.append(del_q)
 
-    # actions_dict[symbol_v] = (
-    #     symbol_dict['H'][t][i][j], symbol_dict['I'][t + 1][i][j], symbol_dict['H'][t + 1][i][j])
-    # actions_dict[symbol_q] = (
-    #     symbol_dict['S'][t][i][j], symbol_dict['Q'][t + 1][i][j], symbol_dict['S'][t + 1][i][j])
-
-    clause = CNF(from_clauses=[pre_v, add_v, del_v, pre_q, add_q, del_q])
+    # clause = CNF(from_clauses=[pre_v, add_v, del_v, pre_q, add_q, del_q])
     return clause
-
-
-# def change_entails_action(symbol_dict, t, i, j):
-#     cnf = CNF()
-#     cnf.append([-symbol_dict['H'][t][i][j], -symbol_dict['I'][t + 1][i][j], symbol_dict['v'][t][i][j]])
-#     cnf.append([-symbol_dict['S'][t][i][j], -symbol_dict['Q'][t + 1][i][j], symbol_dict['q'][t][i][j]])
-#
-#     return cnf
 
 
 def create_KB(observations, symbol_dict, b, n_rows, n_cols):
     KB = CNF()
     count_H_S_dict = {'H': [], 'S': []}
     possible_actions_tiles = {'q': [], 'v': []}
-    action_effects_dict = {}
     for t in range(b):
         # Start new H_S count for t
         count_H_S_dict['H'].append([0, 0])
@@ -155,13 +145,18 @@ def create_KB(observations, symbol_dict, b, n_rows, n_cols):
                 cur_stat = observations[t][i][j]
                 if cur_stat != '?':
                     # Add known status
-                    KB.extend(update_known_stat(t, i, j, symbol_dict, cur_stat, b))
+                    KB.append([symbol_dict[cur_stat][t][i][j]])
+                KB.extend(update_known_stat(t, i, j, symbol_dict, b))
                 # Update count_H_S and possible_actions dicts, actions take place only before b - 1
                 if t < b - 1:
                     update_count_actions_dicts(count_H_S_dict, possible_actions_tiles, t, i, j, cur_stat,
                                                observations[t + 1][i][j])
+                    # Add actions effects and precondtions clauses
+                    KB.extend(actions_clauses(symbol_dict, t, i, j, possible_actions_tiles))
+                    # Single actions
+                    KB.append([-symbol_dict['q'][t][i][j], -symbol_dict['v'][t][i][j]])
+                    KB.append([-symbol_dict['v'][t][i][j], -symbol_dict['q'][t][i][j]])
 
-                    # KB.extend(change_entails_action(symbol_dict, t, i, j))
                 #  Add single status constraints
                 KB.extend(single_status(symbol_dict, t, i, j))
                 # Add I, Q axioms + at t=0 no Q or I
@@ -169,27 +164,16 @@ def create_KB(observations, symbol_dict, b, n_rows, n_cols):
                 if t == 0:
                     KB.append([-symbol_dict['Q'][t][i][j]])
                     KB.append([-symbol_dict['I'][t][i][j]])
-                # Add actions effects and precondtions clauses
-                if t < b - 1:
-                    KB.extend(actions_clauses(symbol_dict, t, i, j, action_effects_dict))
-                    # Single actions
-                    KB.append([-symbol_dict['q'][t][i][j], -symbol_dict['v'][t][i][j]])
-                    KB.append([-symbol_dict['v'][t][i][j], -symbol_dict['q'][t][i][j]])
-    # return KB, count_H_S_dict, possible_actions_tiles, action_effects_dict
+
     return KB, count_H_S_dict, possible_actions_tiles
 
 
 def force_only_one(flags):
     or_temp = []
     cnf = CNF()
-    # for f1 in flags:
-    #     or_temp.append(f1)
-    #     for f2 in flags:
-    #         if f1 != f2:
-    #             cnf.append([-f1, -f2])
-    # cnf.append(or_temp)
     l = len(flags)
-    for i, f1 in enumerate(flags):
+    for i in range(l):
+        f1 = flags[i]
         or_temp.append(f1)
         for j in range(i + 1, l):
             f2 = flags[j]
@@ -238,45 +222,9 @@ def action_to_cnf(locs, tiles_to_v, tiles_to_q, flag_symbol, symbol_dict, t):
 
     return cnf
 
-#
-# def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
-#                                                  count_H_S_dict, biggest_symbol, possible_action_tiles):
-#     symbol_dict['flags'] = []
-#     curr_biggest_symbol = biggest_symbol + 1
-#     # create list of all locations:
-#     locs = set()
-#     for i in range(n_rows):
-#         for j in range(n_cols):
-#             locs.add((i, j))
-#
-#     linearity_cnf = CNF()
-#     # linearity
-#     for t in range(b - 1):
-#         lower_q = min(police, count_H_S_dict['S'][t][WITHOUT_QUESTION_MARK])
-#         upper_q = min(police, count_H_S_dict['S'][t][WITH_QUESTION_MARK])
-#         lower_v = min(medics, count_H_S_dict['H'][t][WITHOUT_QUESTION_MARK])
-#         upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
-#         symbol_dict['flags'].append([])
-#         for q_runner in range(lower_q, upper_q + 1):
-#             for v_runner in range(lower_v, upper_v + 1):
-#                 # Choose from every possible tile in possible_action_tiles
-#                 for tiles_to_q in itertools.combinations(possible_action_tiles['q'][t], q_runner):
-#                     for tiles_to_v in itertools.combinations(possible_action_tiles['v'][t], v_runner):
-#                         # Add new symbol to flag an action
-#                         symbol_dict['flags'][t].append(curr_biggest_symbol)
-#                         cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
-#                                                         symbol_dict, t)
-#                         curr_biggest_symbol += 1
-#                         linearity_cnf.extend(cur_op_iff_flag)
-#
-#         force_one_action_cnf = force_only_one(symbol_dict['flags'][t])
-#         linearity_cnf.extend(force_one_action_cnf)
-#
-#     return linearity_cnf
 
 def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
               count_H_S_dict, biggest_symbol, possible_action_tiles):
-    # symbol_dict['flags'] = []
     curr_biggest_symbol = biggest_symbol + 1
     # create list of all locations:
     locs = set()
@@ -291,7 +239,6 @@ def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
         upper_q = min(police, count_H_S_dict['S'][t][WITH_QUESTION_MARK])
         lower_v = min(medics, count_H_S_dict['H'][t][WITHOUT_QUESTION_MARK])
         upper_v = min(medics, count_H_S_dict['H'][t][WITH_QUESTION_MARK])
-        # symbol_dict['flags'].append([])
         flags = []
         for q_runner in range(lower_q, upper_q + 1):
             for v_runner in range(lower_v, upper_v + 1):
@@ -302,7 +249,6 @@ def linearity(n_rows, n_cols, b, symbol_dict, medics, police,
                     tiles_to_q, tiles_to_v = p[0], p[1]
 
                     # Add new symbol to flag an action
-                    # symbol_dict['flags'][t].append(curr_biggest_symbol)
                     flags.append(curr_biggest_symbol)
                     cur_op_iff_flag = action_to_cnf(locs, set(tiles_to_v), set(tiles_to_q), curr_biggest_symbol,
                                                     symbol_dict, t)
@@ -403,19 +349,16 @@ def spread_healing_clauses(n_rows, n_cols, b, symbol_dict, biggest_cur_symbol):
                     healing_cnf.extend(forward_healing(symbol_dict, t, i, j))
                     cur_symbol += 1
 
-
-
                 # Backward healing
-
-                elif t > 0:
+                elif t == 1 or t == 2:
                     s = cur_symbol
-                    cur_symbol += 1
                     s_iff_have_sick_neighbor_clause = s_iff_have_sick_neighbor(n_rows, n_cols, symbol_dict, t, s,
                                                                                neighbors)
                     healing_cnf.extend(s_iff_have_sick_neighbor_clause)
                     healing_cnf.append([-symbol_dict['H'][t][i][j], symbol_dict['H'][t - 1][i][j]])
                     healing_cnf.append([-symbol_dict['H'][t][i][j], -symbol_dict['v'][t - 1][i][j]])
                     healing_cnf.append([-symbol_dict['H'][t][i][j], -s])
+                    cur_symbol += 1
 
     healing_cnf.extend(backward_spread_cnf)
     return healing_cnf, cur_symbol
@@ -432,18 +375,14 @@ def solve_problem(input):
     n_cols = len(observations[0][0])
 
     symbol_dict, biggest_symbol = create_symbols(b, n_rows, n_cols)
-    # KB, count_H_S_dict, possible_actions_tiles, action_effects_dict = create_KB(observations, symbol_dict, b, n_rows,
-    #                                                                             n_cols)
-    KB, count_H_S_dict, possible_actions_tiles = create_KB(observations, symbol_dict, b, n_rows,
-                                                                                n_cols)
+
+    KB, count_H_S_dict, possible_actions_tiles = create_KB(observations, symbol_dict, b, n_rows, n_cols)
+
     temp_cnf, biggest_symbol = spread_healing_clauses(n_rows, n_cols, b, symbol_dict, biggest_symbol)
     KB.extend(temp_cnf)
-    # KB.extend(linearity(n_rows, n_cols, b, symbol_dict, action_effects_dict, medics,
-    #                                                        police,
-    #                                                        count_H_S_dict, biggest_symbol, possible_actions_tiles))
-    KB.extend(linearity(n_rows, n_cols, b, symbol_dict, medics,
-                                                           police,
-                                                           count_H_S_dict, biggest_symbol, possible_actions_tiles))
+
+    KB.extend(linearity(n_rows, n_cols, b, symbol_dict, medics, police, count_H_S_dict, biggest_symbol,
+                        possible_actions_tiles))
 
     res = {}
     statuses = ['H', 'Q', 'U', 'S', 'I']
